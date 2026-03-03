@@ -1,117 +1,165 @@
+let palavraCorreta = "";
+let linhaAtual = 0;
+let colunaAtual = 0;
 
-// VARIÁVEIS PRINCIPAIS DO JOGO
+const totalLinhas = 6;
+const totalColunas = 5;
 
-let resposta = "";        // Palavra sorteada do backend
-let tentativaAtual = "";  // Letras digitadas pelo jogador
-let linha = 0;            // Linha atual (0 a 5)
+// =======================
+// BUSCAR PALAVRA DO SERVIDOR
+// =======================
+async function carregarPalavra() {
+    const resposta = await fetch("/palavra");
+    palavraCorreta = (await resposta.text()).trim().toUpperCase();
+    console.log("Palavra sorteada:", palavraCorreta);
+}
 
+carregarPalavra();
 
-// BUSCA A PALAVRA DO BACKEND
-
-fetch("/palavra")
-  .then(r => r.text())
-  .then(p => {
-    resposta = p.trim().toUpperCase();
-    console.log("Palavra sorteada:", resposta);
-  });
-
-// CRIAÇÃO DO TABULEIRO 
+// =======================
+// CRIAR TABULEIRO
+// =======================
 const board = document.getElementById("board");
 
-for (let i = 0; i < 30; i++) { // 6 tentativas * 5 letras
-    const div = document.createElement("div");
-    div.classList.add("tile");
-    board.appendChild(div);
+for (let i = 0; i < totalLinhas * totalColunas; i++) {
+    let tile = document.createElement("div");
+    tile.classList.add("tile");
+    tile.id = "tile-" + i;
+    board.appendChild(tile);
 }
 
-
-
-// TECLADO VIRTUAL, as teclas JÁ EXISTEM no HTML
-
-const keyboard = document.getElementById("keyboard");
-
-// Clique em teclas do teclado virtual
-keyboard.addEventListener("click", (e) => {
-    if (!e.target.classList.contains("key")) return;
-
-    const valor = e.target.textContent;
-
-    if (valor === "ENTER") {
-        enviar();
-    } else if (valor === "⌫") {
-        apagar();
-    } else {
-        digitar(valor);
-    }
-});
-
-
-
-// TECLADO FÍSICO
-document.addEventListener("keydown", (e) => {
-    if (e.key.match(/^[a-zA-Z]$/)) digitar(e.key.toUpperCase());
-    if (e.key === "Backspace") apagar();
-    if (e.key === "Enter") enviar();
-});
-
-
-
-// FUNÇÕES DO JOGO
-
-// Adiciona uma letra à tentativa atual
-function digitar(l) {
-    if (tentativaAtual.length < 5) {
-        tentativaAtual += l;
-        atualizarDisplay();
+// =======================
+// FUNÇÃO: INSERIR LETRA
+// =======================
+function inserirLetra(letra) {
+    if (colunaAtual < totalColunas && linhaAtual < totalLinhas) {
+        const index = linhaAtual * totalColunas + colunaAtual;
+        const tile = document.getElementById("tile-" + index);
+        tile.textContent = letra;
+        colunaAtual++;
     }
 }
 
-// Apaga última letra
-function apagar() {
-    tentativaAtual = tentativaAtual.slice(0, -1);
-    atualizarDisplay();
+// =======================
+// FUNÇÃO: APAGAR LETRA
+// =======================
+function apagarLetra() {
+    if (colunaAtual > 0) {
+        colunaAtual--;
+        const index = linhaAtual * totalColunas + colunaAtual;
+        const tile = document.getElementById("tile-" + index);
+        tile.textContent = "";
+    }
 }
 
-// Atualiza a linha de quadrados na tela
-function atualizarDisplay() {
-    const tiles = document.querySelectorAll(".tile");
+// =======================
+// FUNÇÃO: CONTROLE DE CORES (LÓGICA CERTA DO WORDLE)
+// =======================
+function contarLetras(palavra) {
+    const mapa = {};
+    for (let letra of palavra) {
+        mapa[letra] = (mapa[letra] || 0) + 1;
+    }
+    return mapa;
+}
 
+function verificarPalavra(chute) {
+    const resultado = Array(5).fill("absent");
+    const contagem = contarLetras(palavraCorreta);
+
+    // 1° PASSO — MARCAR VERDES
     for (let i = 0; i < 5; i++) {
-        tiles[linha * 5 + i].textContent = tentativaAtual[i] || "";
-    }
-}
-
-// Valida tentativa
-function enviar() {
-    if (tentativaAtual.length !== 5) return;
-
-    const tiles = document.querySelectorAll(".tile");
-
-    for (let i = 0; i < 5; i++) {
-        const letra = tentativaAtual[i];
-        const tile = tiles[linha * 5 + i];
-
-        // Feedback igual ao Termo
-        if (letra === resposta[i]) {
-            tile.classList.add("correct");
-        } else if (resposta.includes(letra)) {
-            tile.classList.add("present");
-        } else {
-            tile.classList.add("absent");
+        if (chute[i] === palavraCorreta[i]) {
+            resultado[i] = "correct";
+            contagem[chute[i]]--;
         }
     }
 
-    // Acertou
-    if (tentativaAtual === resposta) {
-        setTimeout(() => alert("Parabéns! Você acertou! 🎉"), 100);
+    // 2° PASSO — MARCAR AMARELOS
+    for (let i = 0; i < 5; i++) {
+        if (resultado[i] !== "correct") {
+            const letra = chute[i];
+
+            if (contagem[letra] > 0) {
+                resultado[i] = "present";
+                contagem[letra]--;
+            }
+        }
+    }
+
+    return resultado;
+}
+
+// =======================
+// FUNÇÃO: ENVIAR PALAVRA
+// =======================
+function enviar() {
+    if (colunaAtual < totalColunas) {
+        alert("Termine a palavra!");
         return;
     }
 
-    linha++;
-    tentativaAtual = "";
-
-    // Perdeu o jogo
-    if (linha === 6) {
-        alert("Fim de jogo! A palavra era: " + resposta);
+    // Montar palavra digitada
+    let chute = "";
+    for (let i = 0; i < totalColunas; i++) {
+        const index = linhaAtual * totalColunas + i;
+        chute += document.getElementById("tile-" + index).textContent;
     }
+
+    chute = chute.toUpperCase();
+
+    const resultado = verificarPalavra(chute);
+
+    // Aplicar cores
+    for (let i = 0; i < totalColunas; i++) {
+        const index = linhaAtual * totalColunas + i;
+        const tile = document.getElementById("tile-" + index);
+        tile.classList.add(resultado[i]);
+    }
+
+    // Vitória
+    if (chute === palavraCorreta) {
+        setTimeout(() => alert("Parabéns! Você acertou!"), 200);
+        return;
+    }
+
+    // Última linha
+    if (linhaAtual === totalLinhas - 1) {
+        setTimeout(() => alert("Fim de jogo! A palavra era: " + palavraCorreta), 200);
+        return;
+    }
+
+    // Avança linha
+    linhaAtual++;
+    colunaAtual = 0;
 }
+
+// =======================
+// EVENTOS DO TECLADO VIRTUAL
+// =======================
+document.querySelectorAll(".key").forEach(key => {
+    key.addEventListener("click", () => {
+        const letra = key.textContent;
+
+        if (letra === "ENTER") {
+            enviar();
+        } else if (letra === "⌫") {
+            apagarLetra();
+        } else {
+            inserirLetra(letra);
+        }
+    });
+});
+
+// =======================
+// EVENTOS DO TECLADO FÍSICO
+// =======================
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+        enviar();
+    } else if (event.key === "Backspace") {
+        apagarLetra();
+    } else if (/^[a-zA-Z]$/.test(event.key)) {
+        inserirLetra(event.key.toUpperCase());
+    }
+});
